@@ -5,7 +5,7 @@ import re
 class Parser:
     FUNCNAME = r'\w+'
     LITERAL  = r'-?\d+'
-    VARNAME  = r'\w+(?::\d+)?'
+    VARNAME  = r'\w+(?::\w+)?'
     OPLET    = r'[+-/*|]?='
 
     RE_FUNC_DECL   = re.compile(r'^@(?P<funcname>%s)$' % FUNCNAME)
@@ -17,6 +17,7 @@ class Parser:
     RE_STMT_ELSE   = re.compile(r'^ELSE$')
     RE_STMT_ELSEIF = re.compile(r'^ELSEIF\s+(?P<expr>.+)$')
     RE_STMT_ENDIF  = re.compile(r'^ENDIF$')
+    RE_STMT_SIF    = re.compile(r'^SIF\s+(?P<expr>.+)$')
 
     # expr
     RE_VALUE       = re.compile(r'^(?:%s|%s)' % ( LITERAL, VARNAME ))
@@ -45,6 +46,7 @@ class Parser:
         ( RE_STMT_ELSEIF, 'consume_stmt_elseif' ),
         ( RE_STMT_ELSE,   'consume_stmt_else' ),
         ( RE_STMT_ENDIF,  'consume_stmt_endif' ),
+        ( RE_STMT_SIF,    'consume_stmt_sif' ),
         ( RE_FUNC_CALL,   'consume_func_call' ),
     ]
 
@@ -154,3 +156,11 @@ class Parser:
     def consume_stmt_endif (self, args):
         node = { 'type': 'ENDIF' }
         self.next(node)
+
+    def consume_stmt_sif (self, args):
+        node = { 'type': 'IF', 'cond': [ ( args['expr'], [] ) ], 'else': [] }
+        self.next(node)
+        def _ (n):
+            node['cond'][-1][1].append(n)
+            self.pop()
+        self.push(_)
