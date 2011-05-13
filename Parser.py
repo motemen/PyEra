@@ -18,6 +18,8 @@ class Parser:
     RE_STMT_ELSEIF = re.compile(r'^ELSEIF\s+(?P<expr>.+)$')
     RE_STMT_ENDIF  = re.compile(r'^ENDIF$')
     RE_STMT_SIF    = re.compile(r'^SIF\s+(?P<expr>.+)$')
+    RE_STMT_REPEAT = re.compile(r'^REPEAT\s+(?P<expr>.+)$')
+    RE_STMT_REND   = re.compile(r'^REND$')
 
     # expr
     RE_VALUE       = re.compile(r'^(?:%s|%s)' % ( LITERAL, VARNAME ))
@@ -42,11 +44,16 @@ class Parser:
         ( RE_FUNC_DECL,   'consume_func_decl' ),
         ( RE_FUNC_PROP,   'consume_func_prop' ),
         ( RE_LET,         'consume_let' ),
+
         ( RE_STMT_IF,     'consume_stmt_if' ),
         ( RE_STMT_ELSEIF, 'consume_stmt_elseif' ),
         ( RE_STMT_ELSE,   'consume_stmt_else' ),
         ( RE_STMT_ENDIF,  'consume_stmt_endif' ),
         ( RE_STMT_SIF,    'consume_stmt_sif' ),
+
+        ( RE_STMT_REPEAT, 'consume_stmt_repeat' ),
+        ( RE_STMT_REND,   'consume_stmt_rend' ),
+
         ( RE_FUNC_CALL,   'consume_func_call' ),
     ]
 
@@ -164,3 +171,11 @@ class Parser:
             node['cond'][-1][1].append(n)
             self.pop()
         self.push(_)
+
+    def consume_stmt_repeat (self, args):
+        node = { 'type': 'REPEAT', 'count': args['expr'], 'block': [] }
+        self.next(node)
+        self.push(lambda n: node['block'].append(n))
+
+    def consume_stmt_rend (self, args):
+        self.pop()
