@@ -2,6 +2,13 @@
 
 import re
 
+class ParseException:
+    def __init__ (self, msg):
+        self.msg = msg
+
+    def __repr__ (self):
+        return self.msg
+
 class Parser:
     FUNCNAME = r'\w+'
     LITERAL  = r'-?\d+'
@@ -95,24 +102,43 @@ class Parser:
         else:
             print 'Could not parse: [%s]' % line
 
-    def parse_expr (self, expr, depth = 0):
-        if depth >= len(self.OP):
-            expr = re.sub('^\s*', '', expr)
+    def parse_expr (self, expr):
+        (token, rest) = self._parse_expr(expr)
+        if len(rest) > 0:
+            raise ParseException('Parse remaining: ' + rest)
+        return token
+
+    def _parse_expr (self, expr, depth = 0):
+        expr = re.sub(r'^\s*', '', expr)
+
+        # '(' expr ')'
+        if re.match(r'^\(', expr):
+            (token, expr) = self._parse_expr(expr[1:])
+
+        # value
+        elif depth >= len(self.OP):
             m = self.RE_VALUE.match(expr)
+            if m == None:
+                raise ParseException('Expected literal: ' + expr)
             token = m.group()
             return (token, expr[m.end():])
 
-        (token, expr) = self.parse_expr(expr, depth + 1)
-        expr = re.sub('^\s*', '', expr)
+        # term     ::= factor '*' term
+        # expr_{n} ::= expr_{n+1} {op} expr_{n}
+        else:
+            (token, expr) = self._parse_expr(expr, depth + 1)
+            expr = re.sub('^\s*', '', expr)
 
-        re_op = self.RE_OP[depth]
-        m = re_op.match(expr)
+        m = self.RE_OP[depth].match(expr)
         if m == None:
+            if re.match(r'^\)', expr):
+                expr = expr[1:]
             return (token, expr)
 
         op = m.group()
         expr = expr[m.end():]
-        (token2, expr) = self.parse_expr(expr, depth)
+        (token2, expr) = self._parse_expr(expr, depth)
+
         return ( { 'operator': op, 'operand': [ token, token2 ] }, expr )
 
     def consume_func_decl (self, args):
@@ -133,7 +159,7 @@ class Parser:
         self.next(node)
 
     def consume_stmt_if (self, args):
-        node = { 'type': 'IF', 'cond': [ ( args['expr'], [] ) ], 'else': [] }
+        node = { 'type': 'IF', 'cond': [ ( self.parse_expr(args['expr']), [] ) ], 'else': [] }
         self.next(node)
         def _ (n):
             if n['type'] == 'ELSEIF':
@@ -153,7 +179,7 @@ class Parser:
         self.push(_)
 
     def consume_stmt_elseif (self, args):
-        node = { 'type': 'ELSEIF', 'expr': args['expr'] }
+        node = { 'type': 'ELSEIF', 'expr': self.parse_expr(args['expr']) }
         self.next(node)
 
     def consume_stmt_else (self, args):
@@ -165,7 +191,7 @@ class Parser:
         self.next(node)
 
     def consume_stmt_sif (self, args):
-        node = { 'type': 'IF', 'cond': [ ( args['expr'], [] ) ], 'else': [] }
+        node = { 'type': 'IF', 'cond': [ ( self.parse_expr(args['expr']), [] ) ], 'else': [] }
         self.next(node)
         def _ (n):
             node['cond'][-1][1].append(n)
@@ -173,7 +199,7 @@ class Parser:
         self.push(_)
 
     def consume_stmt_repeat (self, args):
-        node = { 'type': 'REPEAT', 'count': args['expr'], 'block': [] }
+        node = { 'type': 'REPEAT', 'count': self.parse_expr(args['expr']), 'block': [] }
         self.next(node)
         self.push(lambda n: node['block'].append(n))
 
