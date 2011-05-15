@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# vim: set fileencoding=utf8:
 
 import re
 
@@ -12,18 +13,18 @@ class ParseException:
 class Parser:
     FUNCNAME = r'\w+'
     LITERAL  = r'-?\d+'
-    VARNAME  = r'\w+(?::\w+)?'
+    VARNAME  = r'\w+'
     OPLET    = r'[+-/*|]?='
 
     RE_FUNC_DECL   = re.compile(r'^@(?P<funcname>%s)$' % FUNCNAME)
     RE_FUNC_PROP   = re.compile(r'^#(?P<prop>\w+)$')
-    RE_LET         = re.compile(r'^(?P<lhs>%s)\s*(?P<op>%s)\s*(?P<rhs>.+)$' % ( VARNAME, OPLET ))
+    RE_LET         = re.compile(r'^(?P<lhs>%s)\s*(?P<op>%s)\s*(?P<rhs>.+)$' % ( '.+?', OPLET )) # TODO lhs
     RE_FUNC_CALL   = re.compile(r'^(?P<funcname>%s)\s*(?P<args>.*)$' % FUNCNAME)
 
     RE_STMT_IF     = re.compile(r'^IF\s+(?P<expr>.+)$')
-    RE_STMT_ELSE   = re.compile(r'^ELSE$')
+    RE_STMT_ELSE   = re.compile(r'^ELSE\b')
     RE_STMT_ELSEIF = re.compile(r'^ELSEIF\s+(?P<expr>.+)$')
-    RE_STMT_ENDIF  = re.compile(r'^ENDIF$')
+    RE_STMT_ENDIF  = re.compile(r'^ENDIF\b')
     RE_STMT_SIF    = re.compile(r'^SIF\s+(?P<expr>.+)$')
     RE_STMT_REPEAT = re.compile(r'^REPEAT\s+(?P<expr>.+)$')
     RE_STMT_REND   = re.compile(r'^REND$')
@@ -34,23 +35,30 @@ class Parser:
     OP = [
         [ '||' ],
         [ '&&' ],
+        [ '|' ],
+        [ '&' ],
         [ '<', '<=', '>', '>=', '==', '!=' ],
         [ '+', '-' ],
-        [ '*', '/' ]
+        [ '*', '/', '%' ],
+        # ':' については左結合でないと困るので特殊処理が入って
+        # ':*' というオペレータに変換される
+        [ ':' ],
     ]
 
     RE_OP = [
         re.compile(r'\|\|'),
         re.compile(r'&&'),
+        re.compile(r'\|\s+'),
+        re.compile(r'&\s+'),
         re.compile(r'<=?|>=?|==|!='),
         re.compile(r'\+|-'),
-        re.compile(r'\*|/')
+        re.compile(r'\*|/|%'),
+        re.compile(r':')
     ]
 
     CONSUME_RULES = [
         ( RE_FUNC_DECL,   'consume_func_decl' ),
         ( RE_FUNC_PROP,   'consume_func_prop' ),
-        ( RE_LET,         'consume_let' ),
 
         ( RE_STMT_IF,     'consume_stmt_if' ),
         ( RE_STMT_ELSEIF, 'consume_stmt_elseif' ),
@@ -60,6 +68,8 @@ class Parser:
 
         ( RE_STMT_REPEAT, 'consume_stmt_repeat' ),
         ( RE_STMT_REND,   'consume_stmt_rend' ),
+
+        ( RE_LET,         'consume_let' ),
 
         ( RE_FUNC_CALL,   'consume_func_call' ),
     ]
@@ -102,11 +112,23 @@ class Parser:
         else:
             print 'Could not parse: [%s]' % line
 
+    # value ::= varname | value ':' varname | value ':' '(' expr ')'
+    def parse_value (self, value):
+        parts = re.split(r':', value)
+        return [ parts[0], [ self.parse_expr(p) for p in parts[1:] ] ]
+
     def parse_expr (self, expr):
         (token, rest) = self._parse_expr(expr)
         if len(rest) > 0:
-            raise ParseException('Parse remaining: ' + rest)
+            raise ParseException('Parsing %s remaining %s' % (expr, rest))
         return token
+
+    def _parse_atom_value (self, expr):
+        m = self.RE_VALUE.match(expr)
+        if m == None:
+            raise ParseException('Expected literal: ' + expr)
+        token = m.group()
+        return (token, expr[m.end():])
 
     def _parse_expr (self, expr, depth = 0):
         expr = re.sub(r'^\s*', '', expr)
@@ -115,7 +137,7 @@ class Parser:
         if re.match(r'^\(', expr):
             (token, expr) = self._parse_expr(expr[1:])
 
-        # value
+        # atom_value ::= varname | literal
         elif depth >= len(self.OP):
             m = self.RE_VALUE.match(expr)
             if m == None:
@@ -139,7 +161,24 @@ class Parser:
         expr = expr[m.end():]
         (token2, expr) = self._parse_expr(expr, depth)
 
-        return ( { 'operator': op, 'operand': [ token, token2 ] }, expr )
+        node = { 'operator': op, 'operand': [ token, token2 ] }
+        if op == ':':
+            node = { 'operator': ':*', 'operand': self._expand_op_colon(node) }
+        return ( node, expr )
+
+    # { ':', [ A, { ':', [ B, C ] } } -> [ A, B, C ]
+    def _expand_op_colon (self, node):
+        if not isinstance(node, dict):
+            return [ node ]
+
+        if node['operator'] == ':*':
+            return node['operand']
+
+        if node['operator'] != ':':
+            return [ node ]
+
+        (left, right) = node['operand'][0:2]
+        return [ left ] + self._expand_op_colon(right)
 
     def consume_func_decl (self, args):
         node = { 'type': 'FUNCTION', 'body': [] }
@@ -151,7 +190,7 @@ class Parser:
         pass
 
     def consume_let (self, args):
-        node = { 'type': 'LET', 'lhs': args['lhs'], 'op': args['op'], 'rhs': args['rhs'] }
+        node = { 'type': 'LET', 'lhs': self.parse_value(args['lhs']), 'op': args['op'], 'rhs': args['rhs'] }
         self.next(node)
 
     def consume_func_call (self, args):
