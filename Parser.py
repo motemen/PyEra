@@ -20,6 +20,7 @@ class Parser:
     RE_FUNC_PROP   = re.compile(r'^#(?P<prop>\w+)$')
     RE_LET         = re.compile(r'^(?P<lhs>%s)\s*(?P<op>%s)\s*(?P<rhs>.+)$' % ( '.+?', OPLET )) # TODO lhs
     RE_FUNC_CALL   = re.compile(r'^(?P<funcname>%s)\s*(?P<args>.*)$' % FUNCNAME)
+    RE_LABEL       = re.compile(r'^\$(?P<name>\w+)')
 
     RE_STMT_IF     = re.compile(r'^IF\s+(?P<expr>.+)$')
     RE_STMT_ELSE   = re.compile(r'^ELSE\b')
@@ -68,6 +69,8 @@ class Parser:
 
         ( RE_STMT_REPEAT, 'consume_stmt_repeat' ),
         ( RE_STMT_REND,   'consume_stmt_rend' ),
+
+        ( RE_LABEL,       'consume_label' ),
 
         ( RE_LET,         'consume_let' ),
 
@@ -244,3 +247,7 @@ class Parser:
 
     def consume_stmt_rend (self, args):
         self.pop()
+
+    def consume_label (self, args):
+        node = { 'type': 'LABEL', 'name': args['name'] }
+        self.next(node)
