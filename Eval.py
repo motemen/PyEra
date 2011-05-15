@@ -22,16 +22,26 @@ class Eval:
         '!=': lambda x, y: x != y,
         '||': lambda x, y: x or y,
         '&&': lambda x, y: x and y,
-        ':*': '_eval_value_subscription',
+        ':*': 'eval_value_subscription',
     }
 
     def __init__ (self, parser):
+        self.parser = parser
         self.env = {
             'variables': {},
             'functions': parser.functions,
         }
         self.predefined_function = PredefinedFunction(self)
         self.stack = []
+        self.initialize_variables()
+
+    def initialize_variables (self):
+        self.env['variables'].setdefault(
+            'MASTER', 0 # XXX 0 でいい？
+        )
+        self.env['variables'].setdefault(
+            'NAME', { 0: u'あなた' }
+        )
 
     def eval_lvalue (self, value):
         (name, subs) = (value[0], value[1]) # ex. ( 'TALENT', [ 'ASSI', '83' ] )
@@ -46,7 +56,7 @@ class Eval:
         else:
             return int(self.env['variables'].setdefault(atom, 0)) # TODO default value
 
-    def _eval_value_subscription (self, args):
+    def eval_value_subscription (self, args):
         (dic, name) = self.eval_lvalue([ args[0], args[1:] ])
         return dic.setdefault(name, 0) # TODO default value
 
@@ -64,7 +74,7 @@ class Eval:
             return self.eval_atom(expr)
 
     def eval_statement (self, stmt):
-        print 'eval_statement', stmt
+        # print '# eval_statement', stmt
         if stmt['type'] == 'LET':
             # TODO op
             (dic, name) = self.eval_lvalue(stmt['lhs'])
@@ -85,11 +95,12 @@ class Eval:
                 self.eval_block(stmt['block'])
 
         elif stmt['type'] == 'FUNC_CALL':
-            predefined = getattr(self.predefined_function, stmt['funcname'], None)
+            name = stmt['funcname'].upper()
+            predefined = getattr(self.predefined_function, name, None)
             if predefined:
                 predefined(stmt['args'])
             else:
-                self.predefined_function.CALL(stmt['funcname'])
+                self.predefined_function.CALL(name)
 
         elif stmt['type'] == 'LABEL':
             self.current_frame().labels[stmt['name']] = self.current_frame().next_index
@@ -125,25 +136,57 @@ class PredefinedFunction:
         self.eval = e
 
     def CALL (self, name):
-        print 'CALL %s' % name
+        print '# CALL %s' % name
         func = self.eval.env['functions'].get(name)
         if func is None:
             raise EvalException('Function does not exist: \'%s\'' % name)
-        self.eval.eval_block(func['body']) # TODO args
-        print 'END %s' % name
+        self.eval.eval_block(func[-1]['body']) # TODO args
+        print '# CALL %s END' % name
+        # TODO RETURN 0
 
     def DRAWLINE (self, args):
         print '----------'
 
-    def PRINTL (self, args):
-        print args
+    # 改行なしの印字
+    def PRINT (self, arg):
+        print arg,
 
-    def PRINTFORMW (self, args):
-        print 'stub PRINT_SHOPITEM'
-        print args
+    # 改行つき印字
+    def PRINTL (self, arg):
+        print arg
 
+    # 値の印字
+    def PRINTV (self, expr):
+        print self.eval.eval_expr(expr),
+
+    # フォーマット指定印字 + 入力待ち + 改行
+    def PRINTFORMW (self, arg):
+        self.PRINTFORM(arg)
+        raw_input()
+        print
+
+    # フォーマット指定印字 + 改行
+    def PRINTFORML (self, arg):
+        self.PRINTFORM(arg)
+        print
+
+    # フォーマット指定印字
+    def PRINTFORM (self, arg):
+        s = re.Scanner([
+            (r'%.*?%',  lambda _, expr: unicode(self.eval.eval_expr(self.eval.parser.parse_expr(expr[1:-1])))),
+            (r'{.*?}',  lambda _, expr: unicode(self.eval.eval_expr(self.eval.parser.parse_expr(expr[1:-1])))),
+            (r'[^%{]*', lambda _, s: s)
+        ])
+        parsed = s.scan(arg)
+        print ''.join(parsed[0] + [parsed[1]]),
+
+    # ショップで売っているアイテムの表示
     def PRINT_SHOPITEM (self, args):
-        print 'stub PRINT_SHOPITEM'
+        print '# stub PRINT_SHOPITEM'
+
+    # 所持アイテムの表示
+    def PRINT_ITEM (self, args):
+        print '# stbu PRINT_ITEM'
 
     def INPUT (self, args):
         self.eval.env['variables']['RESULT'] = raw_input()
@@ -159,6 +202,25 @@ class PredefinedFunction:
         else:
             raise EvalException('Could not find label \'%s\'' % label)
 
+    def RETURN (self, expr):
+        self.eval.env['variables']['RESULT'] = self.eval.eval_expr(expr)
+        self.eval.current_frame().next_index = -1
+
+    def BEGIN (self, what):
+        # TODO フレームスタックをクリア?
+        if what == 'SHOP':
+            self.CALL('SHOW_SHOP')
+            # TODO 購入うんぬん
+            item_id = int(raw_input())
+            if 0 <= item_id <= 99:
+                itemsales = self.eval.eval_value_subscription([ 'ITEMSALES', item_id  ])
+                print '# itemsales: %s' % itemsales
+            else:
+                self.eval.env['variables']['RESULT'] = item_id
+                self.CALL('USERSHOP')
+        else:
+            raise EvalException('Could not BEGIN \'%s\'' % what)
+
 class Frame:
     def __init__ (self, block):
         self.block = block
@@ -166,7 +228,7 @@ class Frame:
         self.labels = {}
 
     def at_last (self):
-        return self.next_index >= len(self.block)
+        return self.next_index >= len(self.block) or self.next_index == -1
 
     def next_statement (self):
         return self.block[self.next_index]

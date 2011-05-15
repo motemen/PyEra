@@ -186,11 +186,19 @@ class Parser:
     def consume_func_decl (self, args):
         node = { 'type': 'FUNCTION', 'body': [] }
         self.clear()
-        self.functions[ args['funcname'] ] = node
-        self.push(lambda n: node['body'].append(n))
+        # TODO function vs event
+        # self.functions[ args['funcname'] ] = node
+        self.functions.setdefault(args['funcname'], []).append(node)
+        def _ (n):
+            if n['type'] == 'FUNC_PROP':
+                node['prop'] = n['prop']
+            else:
+                node['body'].append(n)
+        self.push(_)
 
     def consume_func_prop (self, args):
-        pass
+        node = { 'type': 'FUNC_PROP', 'prop': args['prop'] }
+        self.next(node)
 
     def consume_let (self, args):
         node = { 'type': 'LET', 'lhs': self.parse_value(args['lhs']), 'op': args['op'], 'rhs': args['rhs'] }
