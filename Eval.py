@@ -34,17 +34,27 @@ class Eval:
         self.predefined_function = PredefinedFunction(self)
         self.stack = []
         self.initialize_variables()
+        self.reorder_functions()
 
     def initialize_variables (self):
         self.env['variables'].setdefault(
             'MASTER', 0 # XXX 0 でいい？
         )
         self.env['variables'].setdefault(
-            'NAME', { 0: u'あなた' }
+            'NAME', { 0: u'あなた' } # TODO CSV から
         )
+
+    def reorder_functions (self):
+        for functions in self.env['functions'].values():
+            functions.sort(
+                lambda f, g: 
+                    -1 if f.get('prop') == 'PRI' else +1 if f.get('prop') == 'LAST' else 0
+            )
 
     def eval_lvalue (self, value):
         (name, subs) = (value[0], value[1]) # ex. ( 'TALENT', [ 'ASSI', '83' ] )
+        if re.match(':', name):
+            print name
         dic = self.env['variables']
         for s in subs:
             (dic, name) = (dic.setdefault(name, {}), self.eval_expr(s))
@@ -76,8 +86,8 @@ class Eval:
     def eval_statement (self, stmt):
         # print '# eval_statement', stmt
         if stmt['type'] == 'LET':
-            # TODO op
             (dic, name) = self.eval_lvalue(stmt['lhs'])
+            print '%s = %s' % (stmt['lhs'], self.eval_expr(stmt['rhs']))
             dic[name] = self.eval_expr(stmt['rhs'])
 
         elif stmt['type'] == 'IF':
@@ -140,7 +150,7 @@ class PredefinedFunction:
         func = self.eval.env['functions'].get(name)
         if func is None:
             raise EvalException('Function does not exist: \'%s\'' % name)
-        self.eval.eval_block(func[-1]['body']) # TODO args
+        self.eval.eval_block(func[-1]['body']) # XXX calling last defined function # TODO args
         print '# CALL %s END' % name
         # TODO RETURN 0
 
