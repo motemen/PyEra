@@ -8,11 +8,11 @@ class CSV:
         f = codecs.open(filename, 'r', 'cp932')
         line = f.readline()
         while line:
-            line = line.replace(';.*$', '')
+            line = line.rstrip().replace(';.*$', '')
             self.data.append(line.split(','))
             line = f.readline()
 
     def get (self, index):
         for d in self.data:
-            if str(d[0]) == str(index):
+            if unicode(d[0]) == unicode(index):
                 return d[1:]
