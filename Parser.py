@@ -133,43 +133,39 @@ class Parser:
         token = m.group()
         return (token, expr[m.end():])
 
-    def _parse_expr (self, expr, depth = 0):
-        expr = re.sub(r'^\s*', '', expr)
+    def _parse_expr (self, string, depth = 0):
+        string = re.sub(r'^\s*', '', string)
 
         # '(' expr ')'
-        if re.match(r'^\(', expr):
-            (token, expr) = self._parse_expr(expr[1:])
+        if re.match(r'^\(', string):
+            (token, string) = self._parse_expr(string[1:])
 
         # atom_value ::= varname | literal
         elif depth >= len(self.OP):
-            m = self.RE_VALUE.match(expr)
+            m = self.RE_VALUE.match(string)
             if m == None:
-                raise ParseException('Expected literal: %s' % expr)
+                raise ParseException('Expected literal: %s' % string)
             token = m.group()
-            return (token, expr[m.end():])
+            return (token, string[m.end():])
 
         # term     ::= factor '*' term
         # expr_{n} ::= expr_{n+1} {op} expr_{n}
         else:
-            (token, expr) = self._parse_expr(expr, depth + 1)
-            expr = re.sub('^\s*', '', expr)
+            (token, string) = self._parse_expr(string, depth + 1)
+            string = re.sub('^\s*', '', string)
 
-        m = self.RE_OP[depth].match(expr)
-        if m == None:
-            if re.match(r'^\)', expr):
-                expr = expr[1:]
-            return (token, expr)
+        while True:
+            m = self.RE_OP[depth].match(string)
+            if m == None:
+                if re.match(r'^\)', string):
+                    string = string[1:]
+                return (token, string)
+            op = m.group()
+            string = string[m.end():]
+            (token2, string) = self._parse_expr(string, depth + 1)
+            token = { 'operator': op, 'operand': [ token, token2 ] }
 
-        op = m.group()
-        expr = expr[m.end():]
-        (token2, expr) = self._parse_expr(expr, depth)
-
-        node = { 'operator': op, 'operand': [ token, token2 ] }
-        if op == ':':
-            node = { 'operator': ':*', 'operand': self._expand_op_colon(node) }
-        return ( node, expr )
-
-    # { ':', [ A, { ':', [ B, C ] } } -> [ A, B, C ]
+    # { ':', [ A, { ':', [ B, C ] } ] } -> [ A, B, C ]
     def _expand_op_colon (self, node):
         if not isinstance(node, dict):
             return [ node ]

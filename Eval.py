@@ -22,6 +22,7 @@ class Eval:
         '!=': lambda x, y: x != y,
         '||': lambda x, y: x or y,
         '&&': lambda x, y: x and y,
+        ':': 'op_value_subscription',
         ':*': 'eval_value_subscription',
     }
 
@@ -60,28 +61,29 @@ class Eval:
             (dic, name) = (dic.setdefault(name, {}), self.eval_expr(s))
         return (dic, name)
 
-    def eval_atom (self, atom):
+    def eval_atom (self, atom, expect = int):
         if re.match('^-?\d+$', atom):
             return int(atom)
         else:
-            return int(self.env['variables'].setdefault(atom, 0)) # TODO default value
+            return expect(self.env['variables'].setdefault(atom, expect()))
 
-    def eval_value_subscription (self, args):
-        (dic, name) = self.eval_lvalue([ args[0], args[1:] ])
-        return dic.setdefault(name, 0) # TODO default value
+    def op_value_subscription (self, x, y, expect = int):
+        value = self.eval_expr(x, dict)
+        key = self.eval_expr(y)
+        return value.setdefault(key, expect())
 
-    def eval_op (self, op, args):
+    def eval_op (self, op, args, expect = int):
         bin_op = self.OP_BINARY_IMPL[op]
         if isinstance(bin_op, str):
-            return getattr(self, bin_op)(args)
+            return getattr(self, bin_op)(args[0], args[1], expect)
         else:
-            return bin_op(self.eval_expr(args[0]), self.eval_expr(args[1]))
+            return bin_op(self.eval_expr(args[0], expect), self.eval_expr(args[1], expect))
 
-    def eval_expr (self, expr):
+    def eval_expr (self, expr, expect = int):
         if isinstance(expr, dict):
-            return self.eval_op(expr['operator'], expr['operand'])
+            return self.eval_op(expr['operator'], expr['operand'], expect)
         else:
-            return self.eval_atom(expr)
+            return self.eval_atom(expr, expect)
 
     def eval_statement (self, stmt):
         # print '# eval_statement', stmt
@@ -195,8 +197,12 @@ class PredefinedFunction:
         # print 'FLAG', self.eval.env['variables']['FLAG']
         # print 'ITEMSALES', self.eval.env['variables']['ITEMSALES']
         import pprint
-        # pprint.PrettyPrinter(indent = 2).pprint(self.eval.env['variables'])
+        pprint.PrettyPrinter(indent = 2).pprint(self.eval.env['variables']['ITEMSALES'])
         print '# stub PRINT_SHOPITEM'
+        itemsales = self.eval.env['variables']['ITEMSALES']
+        for n in itemsales:
+            if itemsales[n]:
+                print '[%3d] %s' % (n, '')
 
     # 所持アイテムの表示
     def PRINT_ITEM (self, args):
