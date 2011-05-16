@@ -26,31 +26,34 @@ class Eval:
         '||': lambda x, y: x or y,
         '&&': lambda x, y: x and y,
         ':': 'op_value_subscription',
-        ':*': 'eval_value_subscription',
     }
 
     def __init__ (self, parser, data = {}):
         self.parser = parser
         self.data = data
-        self.env = {
-            'variables': {},
-            'functions': parser.functions,
-        }
+
+        self.variables = {}
+        self.functions = parser.functions
         self.predefined_function = PredefinedFunction(self)
+        self.characters = []
+
         self.stack = []
+
         self.initialize_variables()
         self.reorder_functions()
 
     def initialize_variables (self):
-        self.env['variables'].setdefault(
+        self.variables.setdefault(
             'MASTER', 0 # XXX 0 でいい？
         )
-        self.env['variables'].setdefault(
-            'NAME', { 0: u'あなた' } # TODO CSV から
-        )
+        self.variables.setdefault('NAME', {})
+        self.variables.setdefault('CALLNAME', {})
+        self.variables['NAME'][0]     = self.data['Chara'][0].get(u'名前')[0]
+        self.variables['CALLNAME'][0] = self.data['Chara'][0].get(u'呼び名')[0]
+        # TODO http://www43.atwiki.jp/erabasic/pages/15.html#id_f0c23a8e
 
     def reorder_functions (self):
-        for functions in self.env['functions'].values():
+        for functions in self.functions.values():
             functions.sort(
                 lambda f, g: 
                     -1 if f.get('prop') == 'PRI' else +1 if f.get('prop') == 'LAST' else 0
@@ -60,7 +63,7 @@ class Eval:
         (name, subs) = (value[0], value[1]) # ex. ( 'TALENT', [ 'ASSI', '83' ] )
         if re.match(':', name):
             print name
-        dic = self.env['variables']
+        dic = self.variables
         for s in subs:
             (dic, name) = (dic.setdefault(name, {}), self.eval_expr(s))
         return (dic, name)
@@ -68,8 +71,12 @@ class Eval:
     def eval_atom (self, atom, expect = int):
         if re.match('^-?\d+$', atom):
             return int(atom)
+        elif atom == 'CHARANUM':
+            return self.predefined_function._VAR_CHARNUM()
+        elif atom == 'RANDOM':
+            raise EvalException('Not implemented: RANDOM')
         else:
-            return expect(self.env['variables'].setdefault(atom, expect()))
+            return expect(self.variables.setdefault(atom, expect()))
 
     def op_value_subscription (self, x, y, expect = int):
         value = self.eval_expr(x, dict)
@@ -93,7 +100,7 @@ class Eval:
         # print '# eval_statement', stmt
         if stmt['type'] == 'LET':
             (dic, name) = self.eval_lvalue(stmt['lhs'])
-            print '%s = %s' % (stmt['lhs'], self.eval_expr(stmt['rhs']))
+            # print '%s = %s' % (stmt['lhs'], self.eval_expr(stmt['rhs']))
             dic[name] = self.eval_expr(stmt['rhs'])
 
         elif stmt['type'] == 'IF':
@@ -156,13 +163,24 @@ class Eval:
 
         return True
 
+    def call_event (self, event):
+        for f in self.functions[event]:
+            self.eval_block(f['body'])
+
 class PredefinedFunction:
     def __init__ (self, e):
         self.eval = e
 
+    def _VAR_CHARNUM (self):
+        return len(self.eval.characters)
+
+    def _VAR_RANDOM (self, n):
+        print '# stub _VAR_RANDOM'
+        pass
+
     def CALL (self, name):
         print '# CALL %s' % name
-        func = self.eval.env['functions'].get(name)
+        func = self.eval.functions.get(name)
         if func is None:
             raise EvalException('Function does not exist: \'%s\'' % name)
         self.eval.eval_block(func[-1]['body']) # XXX calling last defined function # TODO args
@@ -170,7 +188,7 @@ class PredefinedFunction:
         # TODO RETURN 0
 
     def DRAWLINE (self, args):
-        print '----------'
+        print '--------------------'
 
     # 改行なしの印字
     def PRINT (self, arg):
@@ -207,12 +225,12 @@ class PredefinedFunction:
 
     # ショップで売っているアイテムの表示
     def PRINT_SHOPITEM (self, args):
-        # print 'FLAG', self.eval.env['variables']['FLAG']
-        # print 'ITEMSALES', self.eval.env['variables']['ITEMSALES']
-        import pprint
-        pprint.PrettyPrinter(indent = 2).pprint(self.eval.env['variables']['ITEMSALES'])
-        print '# stub PRINT_SHOPITEM'
-        itemsales = self.eval.env['variables']['ITEMSALES']
+        # print 'FLAG', self.eval.variables['FLAG']
+        # print 'ITEMSALES', self.eval.variables['ITEMSALES']
+        # import pprint
+        # pprint.PrettyPrinter(indent = 2).pprint(self.eval.variables['ITEMSALES'])
+        # print '# stub PRINT_SHOPITEM'
+        itemsales = self.eval.variables['ITEMSALES']
         i = 0
         for n in itemsales:
             data = self.eval.data['Item'].get(n)
@@ -229,10 +247,10 @@ class PredefinedFunction:
 
     # 所持アイテムの表示
     def PRINT_ITEM (self, args):
-        print '# stbu PRINT_ITEM'
+        print '# stub PRINT_ITEM'
 
     def INPUT (self, args):
-        self.eval.env['variables']['RESULT'] = raw_input()
+        self.eval.variables['RESULT'] = raw_input()
 
     def GOTO (self, label):
         while True:
@@ -246,23 +264,34 @@ class PredefinedFunction:
             raise EvalException('Could not find label \'%s\'' % label)
 
     def RETURN (self, expr):
-        self.eval.env['variables']['RESULT'] = self.eval.eval_expr(expr)
+        self.eval.variables['RESULT'] = self.eval.eval_expr(expr)
         self.eval.current_frame().next_index = -1
 
     def BEGIN (self, what):
+        print '# BEGIN %s' % what
         # TODO フレームスタックをクリア?
         if what == 'SHOP':
-            self.CALL('SHOW_SHOP')
-            # TODO 購入うんぬん
-            item_id = int(raw_input())
-            if 0 <= item_id <= 99:
-                itemsales = self.eval.eval_value_subscription([ 'ITEMSALES', item_id  ])
-                print '# itemsales: %s' % itemsales
-            else:
-                self.eval.env['variables']['RESULT'] = item_id
-                self.CALL('USERSHOP')
+            while True:
+                self.CALL('SHOW_SHOP')
+                item_id = int(raw_input())
+                if 0 <= item_id <= 99:
+                    itemsales = self.eval.variables['ITEMSALES'][item_id]
+                    print '# itemsales: %s' % itemsales
+                    # TODO 購入処理
+                    # TODO BOUGHT ?
+                    self.eval.call_event('EVENTBUY')
+                else:
+                    self.eval.variables['RESULT'] = item_id
+                    self.CALL('USERSHOP')
         else:
             raise EvalException('Could not BEGIN \'%s\'' % what)
+
+    def ADDCHARA (self, n):
+        n = self.eval.eval_expr(n)
+        self.eval.characters.append(n)
+        size = len(self.eval.characters)
+        self.eval.variables['NAME'][size - 1] = self.eval.data['Chara'][int(n)].get(u'名前')[0]
+        self.eval.variables['CALLNAME'][size - 1] = self.eval.data['Chara'][int(n)].get(u'呼び名')[0]
 
 class Frame:
     def __init__ (self, block):
