@@ -201,7 +201,11 @@ class Parser:
         self.next(node)
 
     def consume_let (self, args):
-        node = { 'type': 'LET', 'lhs': self.parse_value(args['lhs']), 'op': args['op'], 'rhs': args['rhs'] }
+        rhs = self.parse_expr(args['rhs'])
+        m = re.match(r'^(.)=$', args['op'])
+        if m:
+            rhs = { 'operator': m.group(1), 'operand': [ self.parse_expr(args['lhs']), rhs ] }
+        node = { 'type': 'LET', 'lhs': self.parse_value(args['lhs']), 'op': '=', 'rhs': rhs }
         self.next(node)
 
     def consume_func_call (self, args):
