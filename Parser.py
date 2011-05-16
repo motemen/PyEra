@@ -129,7 +129,7 @@ class Parser:
     def _parse_atom_value (self, expr):
         m = self.RE_VALUE.match(expr)
         if m == None:
-            raise ParseException('Expected literal: ' + expr)
+            raise ParseException('Expected literal: %s' % expr)
         token = m.group()
         return (token, expr[m.end():])
 
@@ -144,7 +144,7 @@ class Parser:
         elif depth >= len(self.OP):
             m = self.RE_VALUE.match(expr)
             if m == None:
-                raise ParseException('Expected literal: ' + expr)
+                raise ParseException('Expected literal: %s' % expr)
             token = m.group()
             return (token, expr[m.end():])
 

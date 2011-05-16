@@ -192,6 +192,10 @@ class PredefinedFunction:
 
     # ショップで売っているアイテムの表示
     def PRINT_SHOPITEM (self, args):
+        # print 'FLAG', self.eval.env['variables']['FLAG']
+        # print 'ITEMSALES', self.eval.env['variables']['ITEMSALES']
+        import pprint
+        # pprint.PrettyPrinter(indent = 2).pprint(self.eval.env['variables'])
         print '# stub PRINT_SHOPITEM'
 
     # 所持アイテムの表示
