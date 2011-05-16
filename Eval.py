@@ -26,8 +26,9 @@ class Eval:
         ':*': 'eval_value_subscription',
     }
 
-    def __init__ (self, parser):
+    def __init__ (self, parser, data = {}):
         self.parser = parser
+        self.data = data
         self.env = {
             'variables': {},
             'functions': parser.functions,
@@ -200,9 +201,19 @@ class PredefinedFunction:
         pprint.PrettyPrinter(indent = 2).pprint(self.eval.env['variables']['ITEMSALES'])
         print '# stub PRINT_SHOPITEM'
         itemsales = self.eval.env['variables']['ITEMSALES']
+        i = 0
         for n in itemsales:
-            if itemsales[n]:
-                print '[%3d] %s' % (n, '')
+            data = self.eval.data['Item'].get(n)
+            if itemsales[n] and data:
+                print '[%3d] %s \\%d' % (n, data[0], int(data[1])),
+                i += 1
+                if i % 3 == 0:
+                    print
+                else:
+                    print "\t\t",
+        else:
+            if i % 3 != 0:
+                print
 
     # 所持アイテムの表示
     def PRINT_ITEM (self, args):
