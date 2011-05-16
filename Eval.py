@@ -8,6 +8,9 @@ class EvalException:
     def __repr__ (self):
         return self.msg
 
+class Continue:
+    pass
+
 class Eval:
     OP_BINARY_IMPL = {
         '+': lambda x, y: x + y,
@@ -104,8 +107,13 @@ class Eval:
         elif stmt['type'] == 'REPEAT':
             count = self.eval_expr(stmt['count'])
             for i in range(count):
-                self.env['variables']['COUNT'] = i
-                self.eval_block(stmt['block'])
+                print i, range(count)
+                self.variables['COUNT'] = i
+                try:
+                    self.eval_block(stmt['block'])
+                except Continue, c:
+                    print '# continue'
+                    continue
 
         elif stmt['type'] == 'FUNC_CALL':
             name = stmt['funcname'].upper()
@@ -114,6 +122,9 @@ class Eval:
                 predefined(stmt['args'])
             else:
                 self.predefined_function.CALL(name)
+
+        elif stmt['type'] == 'CONTINUE':
+            raise Continue()
 
         elif stmt['type'] == 'LABEL':
             self.current_frame().labels[stmt['name']] = self.current_frame().next_index
@@ -128,11 +139,12 @@ class Eval:
         frame = Frame(block)
         self.stack.append(frame)
 
-        while self.eval_next_statement():
-            pass
-
-        if self.current_frame() == frame:
-            self.stack.pop()
+        try:
+            while self.eval_next_statement():
+                pass
+        finally:
+            if self.current_frame() == frame:
+                self.stack.pop()
 
     def eval_next_statement (self):
         if self.current_frame().at_last():

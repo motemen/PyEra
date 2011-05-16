@@ -30,6 +30,8 @@ class Parser:
     RE_STMT_REPEAT = re.compile(r'^REPEAT\s+(?P<expr>.+)$')
     RE_STMT_REND   = re.compile(r'^REND$')
 
+    RE_STMT_CONTINUE = re.compile(r'^CONTINUE$')
+
     # expr
     RE_VALUE       = re.compile(r'^(?:%s|%s)' % ( LITERAL, VARNAME ))
 
@@ -69,6 +71,8 @@ class Parser:
 
         ( RE_STMT_REPEAT, 'consume_stmt_repeat' ),
         ( RE_STMT_REND,   'consume_stmt_rend' ),
+
+        ( RE_STMT_CONTINUE, 'consume_stmt_continue' ),
 
         ( RE_LABEL,       'consume_label' ),
 
@@ -255,6 +259,10 @@ class Parser:
 
     def consume_stmt_rend (self, args):
         self.pop()
+
+    def consume_stmt_continue (self, args):
+        node = { 'type': 'CONTINUE' }
+        self.next(node)
 
     def consume_label (self, args):
         node = { 'type': 'LABEL', 'name': args['name'] }
